@@ -3,6 +3,7 @@ package server;
 import common.Message;
 
 import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -26,19 +27,29 @@ public class Server {
 			            Message msg = (Message) in.readObject();
 
 			            if (msg.type == Message.Type.WRITE) {
-			                new WriteWorker(msg, fileName, port).start();
+			                // NOVO: Cria o worker, enfileira, e tenta liberar o próximo worker
+			                WriteWorker worker = new WriteWorker(msg, fileName, port);
+			                ConsistencyManager.writeQueue.put(worker); 
+                            ConsistencyManager.checkAndReleaseNextWorker();
+                            
 			            }
 			            else if (msg.type == Message.Type.READ) {
 			                new ReadWorker(fileName).start();
 			            }
 			            else if (msg.type == Message.Type.SYNC_WRITE) {
-			                // sincronização automática
+			                // NOVO: Escreve no arquivo e envia ACK de volta ao servidor de origem
 			                FileUtils.appendLine(fileName, msg.line);
+			                
+			                ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
+			                out.writeObject(new Message(Message.Type.ACK));
+			                out.flush();
 			            }
 
 			        } catch (Exception e) {
 			            e.printStackTrace();
-			        }
+			        } finally {
+                        try { client.close(); } catch (Exception e) {}
+                    }
 			    }).start();
 			}
 		}

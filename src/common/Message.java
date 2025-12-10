@@ -9,7 +9,8 @@ public class Message implements Serializable {
 	public enum Type {
         WRITE,
         READ,
-        SYNC_WRITE
+        SYNC_WRITE,
+        ACK
     }
 
     public Type type;

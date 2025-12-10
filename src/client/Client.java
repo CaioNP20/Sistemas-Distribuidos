@@ -19,8 +19,8 @@ public class Client {
 			    boolean isWrite = r.nextBoolean();
 
 			    if (isWrite) {
-			        int a = r.nextInt(999998) + 2;
-			        int b = r.nextInt(999998) + 2;
+			        int a = r.nextInt(999999) + 2;
+			        int b = r.nextInt(999999) + 2;
 
 			        Message msg = new Message(Message.Type.WRITE, a, b);
 			        out.writeObject(msg);
