@@ -37,16 +37,22 @@ public class Server {
 			                new ReadWorker(fileName).start();
 			            }
 			            else if (msg.type == Message.Type.SYNC_WRITE) {
-			                // FASE 1: PREPARE/VOTE. NÃO ESCREVE! Apenas vota/responde.
+			                // FASE 1: PREPARE/VOTE - NÃO ESCREVE NADA!
+			                // Apenas responde ACK (VOTO: OK para escrever)
 			                
 			                ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
-			                out.writeObject(new Message(Message.Type.ACK)); // VOTO: OK para escrever
+			                out.writeObject(new Message(Message.Type.ACK));
 			                out.flush();
 			            }
 			            else if (msg.type == Message.Type.COMMIT_WRITE) {
-			                // FASE 2: COMMIT. Escrita final é realizada.
+			                // FASE 2: COMMIT - Escrita final
 			                FileUtils.appendLine(fileName, msg.line);
 			                System.out.println("[SYNC] Commit concluído no servidor " + port);
+			                
+			                // NOVO: Envia ACK para confirmar que a escrita foi feita
+			                ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
+			                out.writeObject(new Message(Message.Type.ACK));
+			                out.flush();
 			            }
 
 			        } catch (Exception e) {

@@ -18,6 +18,7 @@ public class WriteWorker extends Thread {
 
     public void run() {
         boolean prepareSuccess = false; 
+        boolean commitSuccess = false; // Novo flag
         String line = null;
         
         try {
@@ -29,24 +30,28 @@ public class WriteWorker extends Thread {
 
             line = "O MDC entre " + a + " e " + b + " é " + mdc;
 
-            // FASE 1: PREPARE/VOTE - Verifica se os outros servidores estão prontos para o commit
+            // FASE 1: PREPARE/VOTE (Envia SYNC_WRITE, espera ACK dos outros dois)
             prepareSuccess = ConsistencyManager.checkAndSync(line, port);
 
             if (prepareSuccess) {
-                // Se todos votaram ACK (COMMIT), prossegue para a escrita (FASE 2: COMMIT)
+                // FASE 2: COMMIT - Envia COMMIT_WRITE e espera ACK de volta de TODOS os remotos
+                commitSuccess = ConsistencyManager.syncAndCommit(line, port);
                 
-                // 1. Escreve no arquivo LOCAL (O primário deve comitar primeiro)
-                FileUtils.appendLine(fileName, line);
-                System.out.println("[ESCRITA] Escrita concluída com sucesso no servidor " + port);
-
-                // 2. Envia COMMIT para os outros servidores
-                ConsistencyManager.sendCommit(line, port);
-                
-                // 3. Notifica a liberação do lock (SUCESSO)
-                ConsistencyManager.releaseWritingLock(true); 
-                
+                if (commitSuccess) {
+                    // SUCESSO! Apenas agora o primário comita localmente.
+                    FileUtils.appendLine(fileName, line);
+                    System.out.println("[ESCRITA] Escrita concluída com sucesso no servidor " + port);
+                    
+                    // Libera o lock
+                    ConsistencyManager.releaseWritingLock(true); 
+                } else {
+                    // ABORT: Falha no Commit (Um servidor falhou em confirmar a escrita)
+                    System.err.println("[ESCRITA] Falha na fase de COMMIT. Escrita abortada no servidor " + port);
+                    // Notifica a falha para o lock (mantém o lock ativado e aciona a RecoveryThread)
+                    ConsistencyManager.releaseWritingLock(false);
+                }
             } else {
-                // ABORT: Falha na votação (PREPARE). Nenhum servidor escreveu.
+                // ABORT: Falha na votação (PREPARE). Nenhum servidor escreve.
                 System.err.println("[ESCRITA] Falha na votação (PREPARE). Escrita abortada no servidor " + port);
                 // Notifica a falha para o lock (mantém o lock ativado e aciona a RecoveryThread)
                 ConsistencyManager.releaseWritingLock(false);

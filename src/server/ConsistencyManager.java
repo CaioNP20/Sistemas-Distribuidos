@@ -101,6 +101,18 @@ public class ConsistencyManager {
     }
 
     // --- FASE 2: COMMIT (sendCommit) ---
+ // Envia COMMIT_WRITE para os outros 2 servidores e espera ACK de volta.
+    public static boolean syncAndCommit(String line, int originPort) {
+        boolean success = true;
+        int[] allPorts = {9101, 9102, 9103};
+        
+        for (int port : allPorts) {
+            if (port != originPort) {
+                success &= sendCommitMessage(line, port); // Espera ACK de volta
+            }
+        }
+        return success; // Só retorna true se TODOS os commits foram ACK'd
+    }
 
     // Envia COMMIT_WRITE para os outros 2 servidores.
     public static void sendCommit(String line, int originPort) {
@@ -111,20 +123,40 @@ public class ConsistencyManager {
             }
         }
     }
+    
 
     // Envia a mensagem COMMIT_WRITE (Não espera resposta, commit é fire-and-forget após sucesso na fase 1)
-    private static void sendCommitMessage(String line, int port) {
-        try (Socket s = new Socket("localhost", port);
-             ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream())) {
+    private static boolean sendCommitMessage(String line, int port) {
+        Socket s = null;
+        ObjectOutputStream out = null;
+        ObjectInputStream in = null;
+        try {
+            s = new Socket("localhost", port);
             
+            // 1. Envia o COMMIT_WRITE
+            out = new ObjectOutputStream(s.getOutputStream());
             Message msg = new Message(Message.Type.COMMIT_WRITE);
             msg.line = line;
             out.writeObject(msg);
             out.flush();
+
+            // 2. Espera pelo ACK (Confirmação de que a escrita foi feita)
+            in = new ObjectInputStream(s.getInputStream());
+            Message response = (Message) in.readObject();
             
+            if (response.type == Message.Type.ACK) {
+                return true;
+            } else {
+                System.err.println("-> Erro: Resposta inesperada de " + port);
+                return false;
+            }
         } catch (Exception e) {
-            // Se falhar aqui, a RecoveryThread precisará corrigir a inconsistência no futuro.
-            System.err.println("-> Falha no commit (FASE 2) com servidor na porta " + port);
+            System.err.println("-> Falha de conexão/commit com servidor na porta " + port);
+            return false;
+        } finally {
+            try { if (in != null) in.close(); } catch (Exception e) {}
+            try { if (out != null) out.close(); } catch (Exception e) {}
+            try { if (s != null) s.close(); } catch (Exception e) {}
         }
     }
 
