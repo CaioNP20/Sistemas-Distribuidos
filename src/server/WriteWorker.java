@@ -17,7 +17,7 @@ public class WriteWorker extends Thread {
     }
 
     public void run() {
-        boolean syncSuccess = false; // Inicializa o status de sucesso
+        boolean prepareSuccess = false; 
         String line = null;
         
         try {
@@ -29,25 +29,33 @@ public class WriteWorker extends Thread {
 
             line = "O MDC entre " + a + " e " + b + " é " + mdc;
 
-            // 1. Tenta sincronizar com os outros 2 servidores e espera pelo ACK (PREPARE/COMMIT)
-            syncSuccess = ConsistencyManager.checkAndSync(line, port);
+            // FASE 1: PREPARE/VOTE - Verifica se os outros servidores estão prontos para o commit
+            prepareSuccess = ConsistencyManager.checkAndSync(line, port);
 
-            if (syncSuccess) {
-                // 2. Se 100% dos servidores confirmaram (ACK), escreve no arquivo local.
-                // A atomicidade é garantida: todos online OU nenhum escreve.
+            if (prepareSuccess) {
+                // Se todos votaram ACK (COMMIT), prossegue para a escrita (FASE 2: COMMIT)
+                
+                // 1. Escreve no arquivo LOCAL (O primário deve comitar primeiro)
                 FileUtils.appendLine(fileName, line);
                 System.out.println("[ESCRITA] Escrita concluída com sucesso no servidor " + port);
+
+                // 2. Envia COMMIT para os outros servidores
+                ConsistencyManager.sendCommit(line, port);
+                
+                // 3. Notifica a liberação do lock (SUCESSO)
+                ConsistencyManager.releaseWritingLock(true); 
+                
             } else {
-                // 3. Se falhou (algum servidor indisponível), não faz a escrita local.
-                System.err.println("[ESCRITA] Falha na sincronização. Escrita abortada no servidor " + port);
+                // ABORT: Falha na votação (PREPARE). Nenhum servidor escreveu.
+                System.err.println("[ESCRITA] Falha na votação (PREPARE). Escrita abortada no servidor " + port);
+                // Notifica a falha para o lock (mantém o lock ativado e aciona a RecoveryThread)
+                ConsistencyManager.releaseWritingLock(false);
             }
 
         } catch (Exception e) {
             e.printStackTrace();
-            syncSuccess = false; // Força falha em caso de exceção
-        } finally {
-            // 4. Libera o lock de escrita (ou o mantém, se syncSuccess for false)
-            ConsistencyManager.releaseWritingLock(syncSuccess); 
-        }
+            // Garante que o lock seja liberado/mantido em modo de falha em caso de exceção.
+            ConsistencyManager.releaseWritingLock(false); 
+        } 
     }
 }

@@ -27,7 +27,7 @@ public class Server {
 			            Message msg = (Message) in.readObject();
 
 			            if (msg.type == Message.Type.WRITE) {
-			                // NOVO: Cria o worker, enfileira, e tenta liberar o próximo worker
+			                // Fila e Exclusão Mútua
 			                WriteWorker worker = new WriteWorker(msg, fileName, port);
 			                ConsistencyManager.writeQueue.put(worker); 
                             ConsistencyManager.checkAndReleaseNextWorker();
@@ -37,12 +37,16 @@ public class Server {
 			                new ReadWorker(fileName).start();
 			            }
 			            else if (msg.type == Message.Type.SYNC_WRITE) {
-			                // NOVO: Escreve no arquivo e envia ACK de volta ao servidor de origem
-			                FileUtils.appendLine(fileName, msg.line);
+			                // FASE 1: PREPARE/VOTE. NÃO ESCREVE! Apenas vota/responde.
 			                
 			                ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
-			                out.writeObject(new Message(Message.Type.ACK));
+			                out.writeObject(new Message(Message.Type.ACK)); // VOTO: OK para escrever
 			                out.flush();
+			            }
+			            else if (msg.type == Message.Type.COMMIT_WRITE) {
+			                // FASE 2: COMMIT. Escrita final é realizada.
+			                FileUtils.appendLine(fileName, msg.line);
+			                System.out.println("[SYNC] Commit concluído no servidor " + port);
 			            }
 
 			        } catch (Exception e) {

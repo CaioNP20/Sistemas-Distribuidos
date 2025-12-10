@@ -10,6 +10,7 @@ public class Message implements Serializable {
         WRITE,
         READ,
         SYNC_WRITE,
+        COMMIT_WRITE,
         ACK
     }
 
