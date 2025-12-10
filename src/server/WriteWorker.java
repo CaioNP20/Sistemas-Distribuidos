@@ -1,11 +1,10 @@
 package server;
 
+import common.ConsistencyManager;
 import common.Message;
-
 import java.util.Random;
 
 public class WriteWorker extends Thread {
-
     Message msg;
     String fileName;
     int port;
@@ -17,37 +16,34 @@ public class WriteWorker extends Thread {
     }
 
     public void run() {
-        boolean syncSuccess = false; // Inicializa o status de sucesso
-        String line = null;
-        
         try {
-            Thread.sleep(100 + new Random().nextInt(101));
-
-            int a = msg.value1;
-            int b = msg.value2;
-            int mdc = MDCUtils.mdc(a, b);
-
-            line = "O MDC entre " + a + " e " + b + " é " + mdc;
-
-            // 1. Tenta sincronizar com os outros 2 servidores e espera pelo ACK (PREPARE/COMMIT)
-            syncSuccess = ConsistencyManager.checkAndSync(line, port);
-
-            if (syncSuccess) {
-                // 2. Se 100% dos servidores confirmaram (ACK), escreve no arquivo local.
-                // A atomicidade é garantida: todos online OU nenhum escreve.
+            // Sleep 100-200ms (requisito do projeto)
+            int sleepTime = 100 + new Random().nextInt(101);
+            Thread.sleep(sleepTime);
+            
+            // Calcula MDC
+            int mdc = MDCUtils.mdc(msg.value1, msg.value2);
+            String line = "The GCD between " + msg.value1 + " and " + msg.value2 + " is " + mdc;
+            
+            // Synchronized write (ensures atomicity per server)
+            synchronized (FileUtils.class) {
+                // Escreve no arquivo local
                 FileUtils.appendLine(fileName, line);
-                System.out.println("[ESCRITA] Escrita concluída com sucesso no servidor " + port);
-            } else {
-                // 3. Se falhou (algum servidor indisponível), não faz a escrita local.
-                System.err.println("[ESCRITA] Falha na sincronização. Escrita abortada no servidor " + port);
+                System.out.println("[WriteWorker] (port " + port + ") Wrote: " + line + " (requestId=" + msg.requestId + ")");
+                
+                // Propaga escrita para os outros servidores (silent)
+                try {
+                    ConsistencyManager.syncWithOthers(line, port);
+                    // Small delay to ensure sync messages are processed
+                    Thread.sleep(50);
+                } catch (Exception e) {
+                    System.err.println("[WriteWorker] Failed to sync with others (requestId=" + msg.requestId + "): " + e.getMessage());
+                }
             }
 
         } catch (Exception e) {
+            System.err.println("[ERROR] WriteWorker FAILED: " + e.getMessage());
             e.printStackTrace();
-            syncSuccess = false; // Força falha em caso de exceção
-        } finally {
-            // 4. Libera o lock de escrita (ou o mantém, se syncSuccess for false)
-            ConsistencyManager.releaseWritingLock(syncSuccess); 
         }
     }
 }

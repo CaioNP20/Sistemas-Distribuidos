@@ -1,42 +1,47 @@
 package client;
 
-import common.Message;
-
-import java.io.ObjectOutputStream;
-import java.net.Socket;
-import java.util.Random;
-import java.io.FileWriter;
+import java.io.IOException;
 
 public class Client {
-    public static void main(String[] args) throws Exception {
-
-        Random r = new Random();
-        try (FileWriter log = new FileWriter("client_log.txt", true)) {
-			while (true) {
-			    Socket s = new Socket("localhost", 9000);
-			    ObjectOutputStream out = new ObjectOutputStream(s.getOutputStream());
-
-			    boolean isWrite = r.nextBoolean();
-
-			    if (isWrite) {
-			        int a = r.nextInt(999999) + 2;
-			        int b = r.nextInt(999999) + 2;
-
-			        Message msg = new Message(Message.Type.WRITE, a, b);
-			        out.writeObject(msg);
-
-			        log.write(a + "," + b + "\n");
-			        log.flush();
-
-			    } else {
-			        Message msg = new Message(Message.Type.READ);
-			        out.writeObject(msg);
-			    }
-
-			    s.close();
-
-			    Thread.sleep(20 + r.nextInt(31));
-			}
-		}
+    public static void main(String[] args) {
+        System.out.println("[Client] Starting...");
+        
+        ClientTask clientTask = null;
+        try {
+            clientTask = new ClientTask("localhost", 9000, "client_log.txt");
+            
+            // Loop infinito
+            while (true) {
+                clientTask.executeRequest();
+                Thread.sleep(clientTask.getRandomSleepTime());
+            }
+            
+        } catch (IOException e) {
+            // Mostra erro específico
+            if (e.getMessage() != null) {
+                System.err.println("[Client] IO Error: " + e.getMessage());
+            } else if (e instanceof java.io.EOFException) {
+                System.err.println("[Client] Error: Server closed connection unexpectedly");
+            } else {
+                System.err.println("[Client] Connection error");
+            }
+            
+        } catch (InterruptedException e) {
+            System.err.println("[Client] Interrupted");
+            
+        } catch (Exception e) {
+            System.err.println("[Client] Unexpected error: " + e.getMessage());
+            e.printStackTrace();
+            
+        } finally {
+            if (clientTask != null) {
+                try {
+                    clientTask.close();
+                    System.out.println("[Client] Log saved: client_log.txt");
+                } catch (IOException e) {
+                    System.err.println("[Client] Error closing log: " + e.getMessage());
+                }
+            }
+        }
     }
 }
