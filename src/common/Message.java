@@ -2,16 +2,24 @@ package common;
 
 import java.io.Serializable;
 
+/**
+    * Classe para representar as mensagens que são trocadas no sistema.
+    * Ela é um interface Serializable porque a comunicação no sistema é via socket TCP, que permite apenas bytes.
+*/ 
+ 
+
 public class Message implements Serializable {
    
 	private static final long serialVersionUID = 1L;
 
+    // Enum que define os tipos de mensagens suportadas pelo sistema.
+     
 	public enum Type {
-        WRITE,
-        READ,
-        SYNC_WRITE,
-        COMMIT_WRITE,
-        ACK
+        WRITE,          //Usada na requisição de escrita
+        READ,           //Usada na requisição de leitura
+        SYNC_WRITE,     //Msg de sincronização entre os servidores 
+        COMMIT_WRITE,   //Confirmação de um commit de uma escrita
+        ACK             //Confirmação de recebimento
     }
 
     public Type type;
